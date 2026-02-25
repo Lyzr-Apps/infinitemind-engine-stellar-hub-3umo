@@ -1540,6 +1540,8 @@ function QueryConsoleScreen({
   exportStatus,
   activeAgentId,
   initialQuery,
+  onDeleteConversation,
+  onClearConversations,
 }: {
   conversations: ConversationEntry[]
   onQuery: (q: string, web: boolean) => void
@@ -1551,11 +1553,14 @@ function QueryConsoleScreen({
   exportStatus: string
   activeAgentId: string | null
   initialQuery: string
+  onDeleteConversation: (id: string) => void
+  onClearConversations: () => void
 }) {
   const [queryInput, setQueryInput] = useState(initialQuery)
   const [includeWebSearch, setIncludeWebSearch] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [shareEntry, setShareEntry] = useState<ConversationEntry | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; label: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1599,8 +1604,35 @@ function QueryConsoleScreen({
     return text
   }
 
+  const confirmDeleteConversation = (id: string, query: string) => {
+    setDeleteTarget({ type: 'conversation', id, label: query.length > 50 ? query.slice(0, 50) + '...' : query })
+  }
+
+  const confirmClearAll = () => {
+    setDeleteTarget({ type: 'clearAll', id: 'all', label: 'all conversation history' })
+  }
+
+  const executeConversationDelete = () => {
+    if (!deleteTarget) return
+    if (deleteTarget.type === 'clearAll') {
+      onClearConversations()
+    } else {
+      onDeleteConversation(deleteTarget.id)
+    }
+    setDeleteTarget(null)
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-120px)]">
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.type === 'clearAll' ? 'Clear All History' : 'Delete Conversation'}
+        message={`Are you sure you want to delete ${deleteTarget?.type === 'clearAll' ? 'all conversation history' : `"${deleteTarget?.label ?? ''}"`}? This action cannot be undone.`}
+        onConfirm={executeConversationDelete}
+        onCancel={() => setDeleteTarget(null)}
+        confirmLabel={deleteTarget?.type === 'clearAll' ? 'Clear All' : 'Delete'}
+      />
+
       {shareEntry && (
         <ShareMenu
           content={buildShareContent(shareEntry)}
@@ -1610,8 +1642,18 @@ function QueryConsoleScreen({
       )}
 
       <div className="mb-4">
-        <h1 className="text-2xl font-light tracking-wider mb-1">Query Console</h1>
-        <p className="text-sm text-muted-foreground">Ask InfiniteMind anything about your knowledge base</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-light tracking-wider mb-1">Query Console</h1>
+            <p className="text-sm text-muted-foreground">Ask InfiniteMind anything about your knowledge base</p>
+          </div>
+          {conversations.length > 0 && (
+            <Button variant="outline" size="sm" className="text-xs" onClick={confirmClearAll}>
+              <RiDeleteBinLine className="mr-1.5 w-3.5 h-3.5" />
+              Clear History
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -1643,10 +1685,13 @@ function QueryConsoleScreen({
           )}
 
           {conversations.map((entry) => (
-            <div key={entry.id} className="space-y-4">
+            <div key={entry.id} className="space-y-4 group/conv">
               <div className="flex justify-end">
-                <div className="bg-primary/10 border border-primary/20 p-4 max-w-[80%]">
-                  <p className="text-sm">{entry.query}</p>
+                <div className="bg-primary/10 border border-primary/20 p-4 max-w-[80%] relative">
+                  <Button variant="ghost" size="sm" className="absolute top-1 right-1 opacity-0 group-hover/conv:opacity-100 h-6 w-6 p-0 transition-opacity" onClick={() => confirmDeleteConversation(entry.id, entry.query)}>
+                    <RiCloseLine className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                  <p className="text-sm pr-6">{entry.query}</p>
                   <p className="text-xs text-muted-foreground/50 mt-1">{new Date(entry.timestamp).toLocaleString()}</p>
                 </div>
               </div>
@@ -1836,6 +1881,7 @@ function SettingsScreen({
   const [kbLoading, setKbLoading] = useState(false)
   const [kbStatus, setKbStatus] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; label: string } | null>(null)
+  const [duplicateWarning, setDuplicateWarning] = useState('')
 
   const loadDocs = useCallback(async () => {
     setKbLoading(true)
@@ -1853,7 +1899,11 @@ function SettingsScreen({
   const handleAddCategory = () => {
     const trimmed = newCategory.trim()
     if (!trimmed) return
-    if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return
+    if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      setDuplicateWarning('This category already exists')
+      setTimeout(() => setDuplicateWarning(''), 3000)
+      return
+    }
     setCategories((prev) => [...prev, trimmed])
     setNewCategory('')
   }
@@ -1886,7 +1936,11 @@ function SettingsScreen({
     if (editingIndex === null || !editValue.trim()) return
     const trimmed = editValue.trim()
     const duplicate = categories.some((c, i) => i !== editingIndex && c.toLowerCase() === trimmed.toLowerCase())
-    if (duplicate) return
+    if (duplicate) {
+      setDuplicateWarning('A category with this name already exists')
+      setTimeout(() => setDuplicateWarning(''), 3000)
+      return
+    }
     setCategories((prev) => prev.map((c, i) => (i === editingIndex ? trimmed : c)))
     setEditingIndex(null)
     setEditValue('')
@@ -1986,6 +2040,7 @@ function SettingsScreen({
             <Input placeholder="Add new category..." value={newCategory} onChange={(e) => setNewCategory(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()} className="bg-secondary border-border" />
             <Button variant="outline" onClick={handleAddCategory}><RiAddLine className="w-4 h-4" /></Button>
           </div>
+          {duplicateWarning && <StatusMessage message={duplicateWarning} type="info" />}
           <ScrollArea className="h-[350px]">
             <div className="space-y-1.5 pr-3">
               {categories.map((cat, i) => (
@@ -2286,6 +2341,14 @@ export default function Page() {
     setPushing(false)
   }
 
+  const handleDeleteConversation = (id: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== id))
+  }
+
+  const handleClearConversations = () => {
+    setConversations([])
+  }
+
   const handleSearchRoute = (query: string) => {
     setPendingQuery(query)
     setActiveScreen('query')
@@ -2390,6 +2453,8 @@ export default function Page() {
                 exportStatus={exportStatus}
                 activeAgentId={activeAgentId}
                 initialQuery={pendingQuery}
+                onDeleteConversation={handleDeleteConversation}
+                onClearConversations={handleClearConversations}
               />
             )}
 
