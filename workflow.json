@@ -1,0 +1,60 @@
+{
+  "nodes": [
+    {
+      "id": "input_node",
+      "type": "Input",
+      "label": "User Input",
+      "nodeCategory": "input"
+    },
+    {
+      "id": "resource_processor",
+      "type": "Agent",
+      "label": "Resource Processor Agent",
+      "nodeCategory": "agent",
+      "agent_id": "699eaac2fef44557ea6f39ff"
+    },
+    {
+      "id": "knowledge_orchestrator",
+      "type": "Agent",
+      "label": "Knowledge Orchestrator",
+      "nodeCategory": "agent",
+      "agent_id": "699eaa9e12ee8368eec5f693"
+    },
+    {
+      "id": "kb_retrieval",
+      "type": "Agent",
+      "label": "KB Retrieval Agent",
+      "nodeCategory": "agent",
+      "agent_id": "699eaa6d36d6a922b7ae5689"
+    },
+    {
+      "id": "web_research",
+      "type": "Agent",
+      "label": "Web Research Agent",
+      "nodeCategory": "agent",
+      "agent_id": "699eaa6d36d6a922b7ae568b"
+    },
+    {
+      "id": "output_delivery",
+      "type": "Agent",
+      "label": "Output Delivery Agent",
+      "nodeCategory": "agent",
+      "agent_id": "699eaac3b17c6b5799e16d79"
+    },
+    {
+      "id": "output_node",
+      "type": "Output",
+      "label": "Final Output",
+      "nodeCategory": "end"
+    }
+  ],
+  "edges": [
+    { "source": "input_node", "target": "resource_processor" },
+    { "source": "input_node", "target": "knowledge_orchestrator" },
+    { "source": "knowledge_orchestrator", "target": "kb_retrieval" },
+    { "source": "knowledge_orchestrator", "target": "web_research" },
+    { "source": "knowledge_orchestrator", "target": "output_delivery" },
+    { "source": "output_delivery", "target": "output_node" },
+    { "source": "resource_processor", "target": "output_node" }
+  ]
+}

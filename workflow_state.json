@@ -1,0 +1,87 @@
+{
+  "app_name": "InfiniteMind Knowledge Engine",
+  "created_at": "2026-02-25",
+  "rag_id": "699eaa51b45a5c2df19082eb",
+  "rag_name": "infinitemindresourcelibrarybaq9",
+  "agents": {
+    "resource_processor": {
+      "agent_id": "699eaac2fef44557ea6f39ff",
+      "name": "Resource Processor Agent",
+      "description": "Extracts key takeaways and summaries from all uploaded content (bookmarks, PDFs, images, Notion pages, YouTube links), follows nested links to extract deeper content, and auto-categorizes each resource under the 39 topic categories.",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.3,
+      "has_knowledge_base": true,
+      "has_tools": true,
+      "tools": ["NOTION_FETCH_DATA", "NOTION_FETCH_BLOCK_CONTENTS", "NOTION_SEARCH_NOTION_PAGE"],
+      "file_output": false,
+      "image_output": false,
+      "voice": false
+    },
+    "kb_retrieval": {
+      "agent_id": "699eaa6d36d6a922b7ae5689",
+      "name": "KB Retrieval Agent",
+      "description": "Searches the indexed knowledge base of all processed resources to find relevant summaries, tools, workflows, guides, and prompts matching the user's query.",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.2,
+      "has_knowledge_base": true,
+      "has_tools": false,
+      "tools": [],
+      "file_output": false,
+      "image_output": false,
+      "voice": false,
+      "is_sub_agent": true,
+      "parent_agent": "699eaa9e12ee8368eec5f693"
+    },
+    "web_research": {
+      "agent_id": "699eaa6d36d6a922b7ae568b",
+      "name": "Web Research Agent",
+      "description": "Extends search to the live web to find latest tools, pricing details, subscription costs, comparisons, and emerging resources not yet in the knowledge base.",
+      "provider": "perplexity",
+      "model": "sonar-pro",
+      "temperature": 0.2,
+      "has_knowledge_base": false,
+      "has_tools": false,
+      "tools": [],
+      "file_output": false,
+      "image_output": false,
+      "voice": false,
+      "is_sub_agent": true,
+      "parent_agent": "699eaa9e12ee8368eec5f693"
+    },
+    "knowledge_orchestrator": {
+      "agent_id": "699eaa9e12ee8368eec5f693",
+      "name": "Knowledge Orchestrator",
+      "description": "Coordinates sub-agents to answer user queries by combining indexed resource knowledge with live web research, aggregates results into a unified recommendation or summary with citations and direct links.",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.3,
+      "has_knowledge_base": false,
+      "has_tools": false,
+      "tools": [],
+      "file_output": false,
+      "image_output": false,
+      "voice": false,
+      "is_manager": true,
+      "managed_agents": [
+        "699eaa6d36d6a922b7ae5689",
+        "699eaa6d36d6a922b7ae568b"
+      ]
+    },
+    "output_delivery": {
+      "agent_id": "699eaac3b17c6b5799e16d79",
+      "name": "Output Delivery Agent",
+      "description": "Formats query results into downloadable PDF documents or structures and pushes content directly into the user's Notion workspace as formatted pages.",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.3,
+      "has_knowledge_base": false,
+      "has_tools": true,
+      "tools": ["NOTION_CREATE_NOTION_PAGE", "NOTION_ADD_PAGE_CONTENT", "NOTION_ADD_MULTIPLE_PAGE_CONTENT"],
+      "file_output": true,
+      "image_output": false,
+      "voice": false
+    }
+  }
+}

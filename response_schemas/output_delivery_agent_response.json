@@ -1,0 +1,34 @@
+{
+  "agent_name": "Output Delivery Agent",
+  "agent_id": "699eaac3b17c6b5799e16d79",
+  "description": "Formats query results into downloadable PDF documents or structures and pushes content directly into the user's Notion workspace as formatted pages.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": true,
+  "response_schema": {
+    "delivery_type": "string",
+    "status": "string",
+    "document_title": "string",
+    "sections_formatted": "number",
+    "notion_page_url": "string",
+    "file_url": "string",
+    "message": "string"
+  },
+  "example_response": {
+    "delivery_type": "pdf or notion",
+    "status": "success, error, or partial",
+    "document_title": "sample string",
+    "sections_formatted": 0,
+    "notion_page_url": "URL of created Notion page if applicable",
+    "file_url": "URL of generated PDF if applicable",
+    "message": "Delivery status message"
+  },
+  "has_module_outputs": true,
+  "module_outputs_example": {
+    "artifact_files": [
+      {
+        "file_url": "https://example.com/file.pdf"
+      }
+    ]
+  }
+}

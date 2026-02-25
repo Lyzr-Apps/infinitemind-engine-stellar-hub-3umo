@@ -1,0 +1,66 @@
+{
+  "agent_name": "Knowledge Orchestrator",
+  "agent_id": "699eaa9e12ee8368eec5f693",
+  "description": "Coordinates sub-agents to answer user queries by combining indexed resource knowledge with live web research, aggregates results into a unified recommendation or summary with citations and direct links.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": true,
+  "response_schema": {
+    "query": "string",
+    "summary": "string",
+    "detailed_analysis": "string",
+    "comparison_table": [
+      {
+        "name": "string",
+        "pricing": "string",
+        "rating": "string",
+        "key_features": "string",
+        "best_for": "string"
+      }
+    ],
+    "sources": [
+      {
+        "title": "string",
+        "url": "string",
+        "type": "string"
+      }
+    ],
+    "recommendation": "string",
+    "kb_results_used": "number",
+    "web_results_used": "number",
+    "message": "string"
+  },
+  "example_response": {
+    "query": "The original user query",
+    "summary": "Concise answer to the query",
+    "detailed_analysis": "In-depth analysis with supporting evidence",
+    "comparison_table": [
+      {
+        "name": "sample string",
+        "pricing": "sample string",
+        "rating": "sample string",
+        "key_features": "sample string",
+        "best_for": "sample string"
+      }
+    ],
+    "sources": [
+      {
+        "title": "sample string",
+        "url": "sample string",
+        "type": "sample string"
+      }
+    ],
+    "recommendation": "Final recommendation based on analysis",
+    "kb_results_used": 0,
+    "web_results_used": 0,
+    "message": "sample string"
+  },
+  "has_module_outputs": true,
+  "module_outputs_example": {
+    "artifact_files": [
+      {
+        "file_url": "https://example.com/file.pdf"
+      }
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "agent_name": "Resource Processor Agent",
+  "agent_id": "699eaac2fef44557ea6f39ff",
+  "description": "Extracts key takeaways and summaries from all uploaded content (bookmarks, PDFs, images, Notion pages, YouTube links), follows nested links to extract deeper content, and auto-categorizes each resource under the 39 topic categories.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": true,
+  "response_schema": {
+    "status": "string",
+    "resources_processed": "number",
+    "categorized_resources": [
+      {
+        "title": "string",
+        "source_type": "string",
+        "url": "string",
+        "summary": "string",
+        "key_takeaways": [
+          "string"
+        ],
+        "primary_category": "string",
+        "secondary_categories": [
+          "string"
+        ],
+        "processing_status": "string"
+      }
+    ],
+    "message": "string"
+  },
+  "example_response": {
+    "status": "Processing status: success, partial, or error",
+    "resources_processed": 0,
+    "categorized_resources": [
+      {
+        "title": "sample string",
+        "source_type": "sample string",
+        "url": "sample string",
+        "summary": "sample string",
+        "key_takeaways": [
+          "sample string"
+        ],
+        "primary_category": "sample string",
+        "secondary_categories": [
+          "sample string"
+        ],
+        "processing_status": "sample string"
+      }
+    ],
+    "message": "Overall processing summary"
+  }
+}
