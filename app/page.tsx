@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { callAIAgent, uploadFiles } from '@/lib/aiAgent'
 import { uploadAndTrainDocument, getDocuments, deleteDocuments } from '@/lib/ragKnowledgeBase'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -46,6 +46,13 @@ import {
   RiArrowUpLine,
   RiArrowDownLine,
   RiSparklingLine,
+  RiMailLine,
+  RiShareLine,
+  RiErrorWarningLine,
+  RiAlertLine,
+  RiQuestionLine,
+  RiHistoryLine,
+  RiFileListLine,
 } from 'react-icons/ri'
 
 // =============================================
@@ -162,7 +169,15 @@ interface YouTubeItem {
 // =============================================
 
 function generateId(): string {
-  return Math.random().toString(36).substring(2, 11)
+  return Math.random().toString(36).substring(2, 11) + Date.now().toString(36)
+}
+
+function normalizeUrl(url: string): string {
+  let u = url.trim().toLowerCase()
+  u = u.replace(/\/+$/, '')
+  u = u.replace(/^https?:\/\//, '')
+  u = u.replace(/^www\./, '')
+  return u
 }
 
 function renderMarkdown(text: string) {
@@ -328,6 +343,7 @@ class ErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
           <div className="text-center p-8 max-w-md">
+            <RiErrorWarningLine className="w-12 h-12 text-destructive mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
             <p className="text-muted-foreground mb-4 text-sm">{this.state.error}</p>
             <button
@@ -364,11 +380,11 @@ function StatusMessage({ message, type }: { message: string; type: 'success' | '
     info: 'text-primary bg-primary/10 border-primary/20',
   }
   return (
-    <div className={cn('px-4 py-2 text-sm border mt-2', colors[type])}>
-      {type === 'success' && <RiCheckLine className="inline mr-2" />}
-      {type === 'error' && <RiCloseLine className="inline mr-2" />}
-      {type === 'info' && <RiInformationLine className="inline mr-2" />}
-      {message}
+    <div className={cn('px-4 py-2.5 text-sm border mt-2 flex items-center gap-2', colors[type])}>
+      {type === 'success' && <RiCheckLine className="w-4 h-4 flex-shrink-0" />}
+      {type === 'error' && <RiCloseLine className="w-4 h-4 flex-shrink-0" />}
+      {type === 'info' && <RiInformationLine className="w-4 h-4 flex-shrink-0" />}
+      <span>{message}</span>
     </div>
   )
 }
@@ -415,18 +431,167 @@ function SourceTypeIcon({ type }: { type: string }) {
 }
 
 // =============================================
+// CONFIRMATION DIALOG
+// =============================================
+
+function ConfirmDialog({
+  open,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+}: {
+  open: boolean
+  title: string
+  message: string
+  onConfirm: () => void
+  onCancel: () => void
+  confirmLabel?: string
+  cancelLabel?: string
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-50 w-full max-w-sm bg-card border border-border p-6 shadow-2xl">
+        <div className="flex items-start gap-3 mb-4">
+          <RiAlertLine className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-medium mb-1">{title}</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">{message}</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onCancel} className="text-xs">
+            {cancelLabel}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} className="text-xs">
+            <RiDeleteBinLine className="w-3.5 h-3.5 mr-1" />
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =============================================
+// CLICKABLE RESOURCE TITLE
+// =============================================
+
+function ResourceLink({ title, url, className }: { title: string; url?: string; className?: string }) {
+  if (url && url.trim() && url !== '#') {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn('text-sm font-medium text-primary hover:text-accent underline underline-offset-2 decoration-primary/40 hover:decoration-accent transition-colors truncate', className)}
+        title={`Open: ${title}`}
+      >
+        {title || 'Untitled'}
+      </a>
+    )
+  }
+  return <span className={cn('text-sm font-medium truncate', className)}>{title || 'Untitled'}</span>
+}
+
+// =============================================
+// SHARE / EXPORT INTEGRATION
+// =============================================
+
+function ShareMenu({
+  content,
+  title,
+  onClose,
+}: {
+  content: string
+  title: string
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(content)
+    if (ok) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleEmailShare = () => {
+    const subject = encodeURIComponent(title)
+    const body = encodeURIComponent(content)
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_self')
+  }
+
+  const handleWebShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: content })
+      } catch {
+        // user cancelled
+      }
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-50 w-full max-w-xs bg-card border border-border p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium tracking-wider uppercase">Share</h3>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+            <RiCloseLine className="w-4 h-4" />
+          </Button>
+        </div>
+        <div className="space-y-2">
+          <button
+            onClick={handleCopy}
+            className="w-full flex items-center gap-3 p-3 bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left"
+          >
+            {copied ? <RiCheckLine className="w-4 h-4 text-green-400" /> : <RiFileCopyLine className="w-4 h-4 text-primary" />}
+            <span className="text-sm">{copied ? 'Copied to clipboard' : 'Copy to clipboard'}</span>
+          </button>
+          <button
+            onClick={handleEmailShare}
+            className="w-full flex items-center gap-3 p-3 bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left"
+          >
+            <RiMailLine className="w-4 h-4 text-primary" />
+            <span className="text-sm">Share via email</span>
+          </button>
+          {typeof navigator !== 'undefined' && navigator.share && (
+            <button
+              onClick={handleWebShare}
+              className="w-full flex items-center gap-3 p-3 bg-secondary/50 border border-border hover:border-primary/30 transition-all text-left"
+            >
+              <RiShareLine className="w-4 h-4 text-primary" />
+              <span className="text-sm">Share via system</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =============================================
 // SCREEN: DASHBOARD
 // =============================================
 
 function DashboardScreen({
   categorizedResources,
   categories,
+  conversations,
   onNavigate,
   onSearchRoute,
   sampleMode,
 }: {
   categorizedResources: CategorizedResource[]
   categories: string[]
+  conversations: ConversationEntry[]
   onNavigate: (screen: ScreenType) => void
   onSearchRoute: (query: string) => void
   sampleMode: boolean
@@ -435,7 +600,12 @@ function DashboardScreen({
   const displayResources = sampleMode && categorizedResources.length === 0 ? SAMPLE_RESOURCES : categorizedResources
   const totalResources = displayResources.length
   const activeCategories = new Set(displayResources.map((r) => r?.primary_category).filter(Boolean)).size
-  const queriesThisWeek = sampleMode ? 12 : 0
+  const queriesThisWeek = sampleMode ? 12 : conversations.filter((c) => {
+    const d = new Date(c.timestamp)
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    return d >= weekAgo
+  }).length
 
   const categoryCounts: Record<string, number> = {}
   displayResources.forEach((r) => {
@@ -455,7 +625,7 @@ function DashboardScreen({
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-light tracking-wider mb-1">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Your knowledge at a glance</p>
+        <p className="text-sm text-muted-foreground">Your knowledge ecosystem at a glance</p>
       </div>
 
       <div className="flex gap-3">
@@ -472,49 +642,50 @@ function DashboardScreen({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-card/80 backdrop-blur-sm border-border hover:shadow-[0_0_20px_rgba(191,155,48,0.1)] transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Resources</p>
-              <RiDatabase2Line className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-3xl font-light text-primary">{totalResources}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border hover:shadow-[0_0_20px_rgba(191,155,48,0.1)] transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Active Categories</p>
-              <RiGridLine className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-3xl font-light text-primary">{activeCategories || categories.length}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/80 backdrop-blur-sm border-border hover:shadow-[0_0_20px_rgba(191,155,48,0.1)] transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Queries This Week</p>
-              <RiSearchLine className="w-5 h-5 text-primary" />
-            </div>
-            <p className="text-3xl font-light text-primary">{queriesThisWeek}</p>
-          </CardContent>
-        </Card>
+        {[
+          { label: 'Total Resources', value: totalResources, icon: RiDatabase2Line, action: () => onNavigate('resources') },
+          { label: 'Active Categories', value: activeCategories || categories.length, icon: RiGridLine, action: () => onNavigate('categories') },
+          { label: 'Queries This Week', value: queriesThisWeek, icon: RiHistoryLine, action: () => onNavigate('query') },
+        ].map((stat) => {
+          const Icon = stat.icon
+          return (
+            <Card
+              key={stat.label}
+              className="bg-card/80 backdrop-blur-sm border-border hover:shadow-[0_0_20px_rgba(191,155,48,0.1)] hover:border-primary/20 transition-all cursor-pointer group"
+              onClick={stat.action}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+                  <Icon className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+                </div>
+                <p className="text-3xl font-light text-primary">{stat.value}</p>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="bg-card/80 backdrop-blur-sm border-border">
           <CardHeader>
-            <CardTitle className="text-sm font-medium tracking-wider uppercase flex items-center gap-2">
-              <RiRefreshLine className="w-4 h-4 text-primary" />
-              Recently Added Resources
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium tracking-wider uppercase flex items-center gap-2">
+                <RiRefreshLine className="w-4 h-4 text-primary" />
+                Recently Added Resources
+              </CardTitle>
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => onNavigate('resources')}>
+                View all <RiArrowRightLine className="ml-1 w-3 h-3" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {displayResources.length === 0 ? (
               <div className="text-center py-8">
                 <RiFolderAddLine className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No resources yet</p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => onNavigate('resources')}>
+                <p className="text-sm text-muted-foreground mb-1">No resources yet</p>
+                <p className="text-xs text-muted-foreground/60 mb-3">Start by adding bookmarks, PDFs, or YouTube links</p>
+                <Button variant="outline" size="sm" onClick={() => onNavigate('resources')}>
                   <RiAddLine className="mr-1 w-4 h-4" /> Add Resources
                 </Button>
               </div>
@@ -522,13 +693,13 @@ function DashboardScreen({
               <ScrollArea className="h-[280px]">
                 <div className="space-y-3 pr-3">
                   {displayResources.slice(0, 10).map((r, i) => (
-                    <div key={i} className="p-3 bg-secondary/50 border border-border hover:border-primary/30 transition-all cursor-pointer group">
+                    <div key={`res-${r?.url ?? ''}-${i}`} className="p-3 bg-secondary/50 border border-border hover:border-primary/30 transition-all group">
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 text-muted-foreground group-hover:text-primary transition-colors">
                           <SourceTypeIcon type={r?.source_type ?? ''} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{r?.title ?? 'Untitled'}</p>
+                          <ResourceLink title={r?.title ?? 'Untitled'} url={r?.url} />
                           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{r?.summary ?? ''}</p>
                           <Badge variant="outline" className="mt-1.5 text-xs">{r?.primary_category ?? 'Uncategorized'}</Badge>
                         </div>
@@ -543,10 +714,15 @@ function DashboardScreen({
 
         <Card className="bg-card/80 backdrop-blur-sm border-border">
           <CardHeader>
-            <CardTitle className="text-sm font-medium tracking-wider uppercase flex items-center gap-2">
-              <RiGridLine className="w-4 h-4 text-primary" />
-              Category Health
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium tracking-wider uppercase flex items-center gap-2">
+                <RiGridLine className="w-4 h-4 text-primary" />
+                Category Health
+              </CardTitle>
+              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => onNavigate('categories')}>
+                Browse <RiArrowRightLine className="ml-1 w-3 h-3" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[280px]">
@@ -582,14 +758,12 @@ function ResourceManagerScreen({
   processing,
   statusMessage,
   statusType,
-  activeAgentId,
 }: {
   categories: string[]
   onProcess: (summary: string) => void
   processing: boolean
   statusMessage: string
   statusType: 'success' | 'error' | 'info'
-  activeAgentId: string | null
 }) {
   const [activeTab, setActiveTab] = useState('topics')
   const [topicCategories, setTopicCategories] = useState<string[]>(categories)
@@ -610,6 +784,8 @@ function ResourceManagerScreen({
   const [kbDocuments, setKbDocuments] = useState<Array<{ fileName: string; status?: string }>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const [duplicateWarning, setDuplicateWarning] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; label: string } | null>(null)
 
   const loadKBDocuments = useCallback(async () => {
     const result = await getDocuments(RAG_ID)
@@ -622,13 +798,23 @@ function ResourceManagerScreen({
     loadKBDocuments()
   }, [loadKBDocuments])
 
+  const clearDuplicateWarning = () => {
+    if (duplicateWarning) setTimeout(() => setDuplicateWarning(''), 3000)
+  }
+
   const handlePDFUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
     setPdfUploading(true)
     setPdfStatus('')
+    let skippedCount = 0
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
+      const isDuplicate = uploadedPDFs.some((p) => p.name === file.name) || kbDocuments.some((d) => d.fileName === file.name)
+      if (isDuplicate) {
+        skippedCount++
+        continue
+      }
       setUploadedPDFs((prev) => [...prev, { name: file.name, size: file.size, status: 'uploading' }])
       const result = await uploadAndTrainDocument(RAG_ID, file)
       setUploadedPDFs((prev) =>
@@ -636,28 +822,77 @@ function ResourceManagerScreen({
       )
     }
     setPdfUploading(false)
-    setPdfStatus('Upload complete')
+    if (skippedCount > 0) {
+      setPdfStatus(`Upload complete. ${skippedCount} duplicate(s) skipped.`)
+    } else {
+      setPdfStatus('Upload complete')
+    }
     await loadKBDocuments()
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleDeleteKBDoc = async (fileName: string) => {
-    const result = await deleteDocuments(RAG_ID, [fileName])
-    if (result.success) {
-      setKbDocuments((prev) => prev.filter((d) => d.fileName !== fileName))
-      setPdfStatus(`Deleted ${fileName}`)
+  const confirmDelete = (type: string, id: string, label: string) => {
+    setDeleteTarget({ type, id, label })
+  }
+
+  const executeDelete = async () => {
+    if (!deleteTarget) return
+    const { type, id } = deleteTarget
+    switch (type) {
+      case 'category':
+        setTopicCategories((prev) => prev.filter((_, i) => i !== parseInt(id)))
+        break
+      case 'toolBookmark':
+        setToolBookmarks((prev) => prev.filter((b) => b.id !== id))
+        break
+      case 'guideBookmark':
+        setGuideBookmarks((prev) => prev.filter((b) => b.id !== id))
+        break
+      case 'youtube':
+        setYoutubeLinks((prev) => prev.filter((y) => y.id !== id))
+        break
+      case 'prompt':
+        setPrompts((prev) => prev.filter((p) => p.id !== id))
+        break
+      case 'image':
+        setImageFiles((prev) => prev.filter((_, i) => i !== parseInt(id)))
+        break
+      case 'kbDoc': {
+        const result = await deleteDocuments(RAG_ID, [id])
+        if (result.success) {
+          setKbDocuments((prev) => prev.filter((d) => d.fileName !== id))
+          setPdfStatus(`Deleted ${id}`)
+        }
+        break
+      }
+      case 'uploadedPdf':
+        setUploadedPDFs((prev) => prev.filter((p) => p.name !== id))
+        break
     }
+    setDeleteTarget(null)
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
     setImageUploading(true)
-    const result = await uploadFiles(Array.from(files))
+    const newFiles = Array.from(files).filter((f) => !imageFiles.some((img) => img.name === f.name))
+    if (newFiles.length < files.length) {
+      setDuplicateWarning(`${files.length - newFiles.length} duplicate image(s) skipped`)
+      clearDuplicateWarning()
+    }
+    if (newFiles.length === 0) {
+      setImageUploading(false)
+      return
+    }
+    const result = await uploadFiles(newFiles)
     if (result.success && Array.isArray(result.files)) {
       result.files.forEach((f) => {
         if (f.success) {
-          setImageFiles((prev) => [...prev, { name: f.file_name, url: '' }])
+          setImageFiles((prev) => {
+            if (prev.some((img) => img.name === f.file_name)) return prev
+            return [...prev, { name: f.file_name, url: '' }]
+          })
         }
       })
     }
@@ -665,43 +900,86 @@ function ResourceManagerScreen({
     if (imageInputRef.current) imageInputRef.current.value = ''
   }
 
-  const parseBookmarks = (input: string): BookmarkItem[] => {
-    return input
+  const parseBookmarks = (input: string, existing: BookmarkItem[]): { items: BookmarkItem[]; skipped: number } => {
+    const existingNormalized = new Set(existing.map((b) => normalizeUrl(b.url)))
+    const seenInBatch = new Set<string>()
+    let skipped = 0
+    const items: BookmarkItem[] = []
+
+    input
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
-      .map((url) => ({ id: generateId(), url, title: url.replace(/https?:\/\/(www\.)?/, '').split('/')[0] }))
+      .forEach((url) => {
+        const norm = normalizeUrl(url)
+        if (existingNormalized.has(norm) || seenInBatch.has(norm)) {
+          skipped++
+          return
+        }
+        seenInBatch.add(norm)
+        items.push({ id: generateId(), url, title: url.replace(/https?:\/\/(www\.)?/, '').split('/')[0] || url })
+      })
+
+    return { items, skipped }
   }
 
   const handleAddToolBookmarks = () => {
     if (!toolBookmarkInput.trim()) return
-    const parsed = parseBookmarks(toolBookmarkInput)
-    setToolBookmarks((prev) => [...prev, ...parsed])
+    const { items, skipped } = parseBookmarks(toolBookmarkInput, toolBookmarks)
+    if (skipped > 0) {
+      setDuplicateWarning(`${skipped} duplicate URL(s) skipped`)
+      clearDuplicateWarning()
+    }
+    if (items.length > 0) setToolBookmarks((prev) => [...prev, ...items])
     setToolBookmarkInput('')
   }
 
   const handleAddGuideBookmarks = () => {
     if (!guideBookmarkInput.trim()) return
-    const parsed = parseBookmarks(guideBookmarkInput)
-    setGuideBookmarks((prev) => [...prev, ...parsed])
+    const { items, skipped } = parseBookmarks(guideBookmarkInput, guideBookmarks)
+    if (skipped > 0) {
+      setDuplicateWarning(`${skipped} duplicate URL(s) skipped`)
+      clearDuplicateWarning()
+    }
+    if (items.length > 0) setGuideBookmarks((prev) => [...prev, ...items])
     setGuideBookmarkInput('')
   }
 
   const handleAddYouTube = () => {
     if (!youtubeInput.trim()) return
+    const norm = normalizeUrl(youtubeInput)
+    const exists = youtubeLinks.some((y) => normalizeUrl(y.url) === norm)
+    if (exists) {
+      setDuplicateWarning('This YouTube URL has already been added')
+      clearDuplicateWarning()
+      return
+    }
     setYoutubeLinks((prev) => [...prev, { id: generateId(), url: youtubeInput.trim(), title: youtubeInput.trim().replace(/https?:\/\/(www\.)?/, '').split('/')[0] }])
     setYoutubeInput('')
   }
 
   const handleAddPrompt = () => {
     if (!promptForm.name.trim() || !promptForm.text.trim()) return
+    const exists = prompts.some((p) => p.name.toLowerCase() === promptForm.name.trim().toLowerCase())
+    if (exists) {
+      setDuplicateWarning('A prompt with this name already exists')
+      clearDuplicateWarning()
+      return
+    }
     setPrompts((prev) => [...prev, { id: generateId(), ...promptForm }])
     setPromptForm({ name: '', text: '', category: categories[0] || '' })
   }
 
   const handleAddCategory = () => {
-    if (!newCategory.trim() || topicCategories.includes(newCategory.trim())) return
-    setTopicCategories((prev) => [...prev, newCategory.trim()])
+    const trimmed = newCategory.trim()
+    if (!trimmed) return
+    const exists = topicCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())
+    if (exists) {
+      setDuplicateWarning('This category already exists')
+      clearDuplicateWarning()
+      return
+    }
+    setTopicCategories((prev) => [...prev, trimmed])
     setNewCategory('')
   }
 
@@ -720,12 +998,25 @@ function ResourceManagerScreen({
     onProcess(JSON.stringify(summary))
   }
 
+  const totalItems = toolBookmarks.length + guideBookmarks.length + uploadedPDFs.length + imageFiles.length + youtubeLinks.length + prompts.length
+
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Confirm Deletion"
+        message={`Are you sure you want to delete "${deleteTarget?.label ?? ''}"? This action cannot be undone.`}
+        onConfirm={executeDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-light tracking-wider mb-1">Resource Manager</h1>
-          <p className="text-sm text-muted-foreground">Organize and process your knowledge resources</p>
+          <p className="text-sm text-muted-foreground">
+            Organize and process your knowledge resources
+            {totalItems > 0 && <span className="text-primary ml-2">({totalItems} items ready)</span>}
+          </p>
         </div>
         <GoldGlow>
           <Button onClick={handleProcessAll} disabled={processing} className="bg-primary text-primary-foreground hover:bg-primary/90 transition-all">
@@ -749,6 +1040,7 @@ function ResourceManagerScreen({
               <RiSparklingLine className="w-5 h-5 text-primary animate-spin" />
               <div className="flex-1">
                 <p className="text-sm font-medium">Processing resources...</p>
+                <p className="text-xs text-muted-foreground mt-1">Extracting summaries, following links, and categorizing content</p>
                 <Progress value={undefined} className="mt-2 h-1" />
               </div>
             </div>
@@ -757,16 +1049,17 @@ function ResourceManagerScreen({
       )}
 
       <StatusMessage message={statusMessage} type={statusType} />
+      {duplicateWarning && <StatusMessage message={duplicateWarning} type="info" />}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-secondary border border-border w-full justify-start overflow-x-auto flex-nowrap">
-          <TabsTrigger value="topics" className="text-xs tracking-wider"><RiGridLine className="mr-1.5 w-3.5 h-3.5" />Topics</TabsTrigger>
-          <TabsTrigger value="tools" className="text-xs tracking-wider"><RiBookmarkLine className="mr-1.5 w-3.5 h-3.5" />Tool Bookmarks</TabsTrigger>
-          <TabsTrigger value="guides" className="text-xs tracking-wider"><RiLinkM className="mr-1.5 w-3.5 h-3.5" />Guide Bookmarks</TabsTrigger>
-          <TabsTrigger value="pdfs" className="text-xs tracking-wider"><RiFilePdfLine className="mr-1.5 w-3.5 h-3.5" />PDFs</TabsTrigger>
-          <TabsTrigger value="images" className="text-xs tracking-wider"><RiImageLine className="mr-1.5 w-3.5 h-3.5" />Images</TabsTrigger>
-          <TabsTrigger value="youtube" className="text-xs tracking-wider"><RiYoutubeLine className="mr-1.5 w-3.5 h-3.5" />YouTube</TabsTrigger>
-          <TabsTrigger value="prompts" className="text-xs tracking-wider"><RiTerminalLine className="mr-1.5 w-3.5 h-3.5" />Prompts</TabsTrigger>
+          <TabsTrigger value="topics" className="text-xs tracking-wider"><RiGridLine className="mr-1.5 w-3.5 h-3.5" />Topics ({topicCategories.length})</TabsTrigger>
+          <TabsTrigger value="tools" className="text-xs tracking-wider"><RiBookmarkLine className="mr-1.5 w-3.5 h-3.5" />Tools ({toolBookmarks.length})</TabsTrigger>
+          <TabsTrigger value="guides" className="text-xs tracking-wider"><RiLinkM className="mr-1.5 w-3.5 h-3.5" />Guides ({guideBookmarks.length})</TabsTrigger>
+          <TabsTrigger value="pdfs" className="text-xs tracking-wider"><RiFilePdfLine className="mr-1.5 w-3.5 h-3.5" />PDFs ({uploadedPDFs.length})</TabsTrigger>
+          <TabsTrigger value="images" className="text-xs tracking-wider"><RiImageLine className="mr-1.5 w-3.5 h-3.5" />Images ({imageFiles.length})</TabsTrigger>
+          <TabsTrigger value="youtube" className="text-xs tracking-wider"><RiYoutubeLine className="mr-1.5 w-3.5 h-3.5" />YouTube ({youtubeLinks.length})</TabsTrigger>
+          <TabsTrigger value="prompts" className="text-xs tracking-wider"><RiTerminalLine className="mr-1.5 w-3.5 h-3.5" />Prompts ({prompts.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="topics" className="mt-4">
@@ -782,9 +1075,9 @@ function ResourceManagerScreen({
               <ScrollArea className="h-[400px]">
                 <div className="space-y-1.5 pr-3">
                   {topicCategories.map((cat, i) => (
-                    <div key={i} className="flex items-center justify-between p-2.5 bg-secondary/50 border border-border hover:border-primary/30 transition-all group">
+                    <div key={`cat-${i}`} className="flex items-center justify-between p-2.5 bg-secondary/50 border border-border hover:border-primary/30 transition-all group">
                       <span className="text-sm">{cat}</span>
-                      <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0" onClick={() => setTopicCategories((prev) => prev.filter((_, idx) => idx !== i))}>
+                      <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0" onClick={() => confirmDelete('category', String(i), cat)}>
                         <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                       </Button>
                     </div>
@@ -801,7 +1094,7 @@ function ResourceManagerScreen({
               <CardTitle className="text-sm font-medium tracking-wider uppercase">Tool Bookmarks</CardTitle>
             </CardHeader>
             <CardContent>
-              <Textarea placeholder="Paste tool URLs here, one per line..." value={toolBookmarkInput} onChange={(e) => setToolBookmarkInput(e.target.value)} rows={5} className="bg-secondary border-border mb-3" />
+              <Textarea placeholder="Paste tool URLs here, one per line. Duplicates will be automatically skipped." value={toolBookmarkInput} onChange={(e) => setToolBookmarkInput(e.target.value)} rows={5} className="bg-secondary border-border mb-3" />
               <Button variant="outline" onClick={handleAddToolBookmarks} className="mb-4"><RiAddLine className="mr-2 w-4 h-4" />Parse & Add</Button>
               {toolBookmarks.length > 0 && (
                 <ScrollArea className="h-[300px]">
@@ -810,10 +1103,10 @@ function ResourceManagerScreen({
                       <div key={b.id} className="flex items-center gap-3 p-2.5 bg-secondary/50 border border-border group">
                         <RiLinkM className="w-4 h-4 text-primary flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{b.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{b.url}</p>
+                          <ResourceLink title={b.title} url={b.url} />
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{b.url}</p>
                         </div>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => setToolBookmarks((prev) => prev.filter((x) => x.id !== b.id))}>
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('toolBookmark', b.id, b.title)}>
                           <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                         </Button>
                       </div>
@@ -825,6 +1118,7 @@ function ResourceManagerScreen({
                 <div className="text-center py-6 text-muted-foreground">
                   <RiBookmarkLine className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No tool bookmarks added yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Paste one URL per line above to get started</p>
                 </div>
               )}
             </CardContent>
@@ -837,7 +1131,7 @@ function ResourceManagerScreen({
               <CardTitle className="text-sm font-medium tracking-wider uppercase">Guide Bookmarks</CardTitle>
             </CardHeader>
             <CardContent>
-              <Textarea placeholder="Paste guide URLs here, one per line..." value={guideBookmarkInput} onChange={(e) => setGuideBookmarkInput(e.target.value)} rows={5} className="bg-secondary border-border mb-3" />
+              <Textarea placeholder="Paste guide URLs here, one per line. Duplicates will be automatically skipped." value={guideBookmarkInput} onChange={(e) => setGuideBookmarkInput(e.target.value)} rows={5} className="bg-secondary border-border mb-3" />
               <Button variant="outline" onClick={handleAddGuideBookmarks} className="mb-4"><RiAddLine className="mr-2 w-4 h-4" />Parse & Add</Button>
               {guideBookmarks.length > 0 && (
                 <ScrollArea className="h-[300px]">
@@ -846,10 +1140,10 @@ function ResourceManagerScreen({
                       <div key={b.id} className="flex items-center gap-3 p-2.5 bg-secondary/50 border border-border group">
                         <RiLinkM className="w-4 h-4 text-primary flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{b.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{b.url}</p>
+                          <ResourceLink title={b.title} url={b.url} />
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{b.url}</p>
                         </div>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => setGuideBookmarks((prev) => prev.filter((x) => x.id !== b.id))}>
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('guideBookmark', b.id, b.title)}>
                           <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                         </Button>
                       </div>
@@ -861,6 +1155,7 @@ function ResourceManagerScreen({
                 <div className="text-center py-6 text-muted-foreground">
                   <RiBookmarkLine className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No guide bookmarks added yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Paste one URL per line above to get started</p>
                 </div>
               )}
             </CardContent>
@@ -877,7 +1172,7 @@ function ResourceManagerScreen({
               <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-border hover:border-primary/50 p-8 text-center cursor-pointer transition-all group">
                 <RiFilePdfLine className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
                 <p className="text-sm text-muted-foreground">Drop PDF, DOCX, or TXT files here, or click to browse</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">Files will be uploaded to the knowledge base</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Files will be uploaded to the knowledge base. Duplicates are automatically skipped.</p>
               </div>
               {pdfUploading && <StatusMessage message="Uploading files..." type="info" />}
               {pdfStatus && <StatusMessage message={pdfStatus} type="success" />}
@@ -886,16 +1181,21 @@ function ResourceManagerScreen({
                 <div className="mt-4 space-y-2">
                   <p className="text-xs text-muted-foreground uppercase tracking-wider">Uploaded Files</p>
                   {uploadedPDFs.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between p-2.5 bg-secondary/50 border border-border">
+                    <div key={`pdf-${f.name}-${i}`} className="flex items-center justify-between p-2.5 bg-secondary/50 border border-border group">
                       <div className="flex items-center gap-2">
                         <RiFilePdfLine className="w-4 h-4 text-primary" />
                         <span className="text-sm">{f.name}</span>
                         <span className="text-xs text-muted-foreground">({(f.size / 1024).toFixed(1)} KB)</span>
                       </div>
-                      <Badge variant={f.status === 'trained' ? 'default' : f.status === 'error' ? 'destructive' : 'secondary'} className="text-xs">
-                        {f.status === 'trained' && <RiCheckLine className="mr-1 w-3 h-3" />}
-                        {f.status}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={f.status === 'trained' ? 'default' : f.status === 'error' ? 'destructive' : 'secondary'} className="text-xs">
+                          {f.status === 'trained' && <RiCheckLine className="mr-1 w-3 h-3" />}
+                          {f.status}
+                        </Badge>
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('uploadedPdf', f.name, f.name)}>
+                          <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -903,14 +1203,19 @@ function ResourceManagerScreen({
 
               {kbDocuments.length > 0 && (
                 <div className="mt-4 space-y-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Knowledge Base Documents</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Knowledge Base Documents</p>
+                    <Button variant="ghost" size="sm" onClick={loadKBDocuments} className="h-6 px-2">
+                      <RiRefreshLine className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                   {kbDocuments.map((doc, i) => (
-                    <div key={i} className="flex items-center justify-between p-2.5 bg-secondary/50 border border-border group">
+                    <div key={`kb-${doc.fileName}-${i}`} className="flex items-center justify-between p-2.5 bg-secondary/50 border border-border group">
                       <div className="flex items-center gap-2">
                         <RiDatabase2Line className="w-4 h-4 text-primary" />
                         <span className="text-sm">{doc.fileName}</span>
                       </div>
-                      <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => handleDeleteKBDoc(doc.fileName)}>
+                      <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('kbDoc', doc.fileName, doc.fileName)}>
                         <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                       </Button>
                     </div>
@@ -931,15 +1236,16 @@ function ResourceManagerScreen({
               <div onClick={() => imageInputRef.current?.click()} className="border-2 border-dashed border-border hover:border-primary/50 p-8 text-center cursor-pointer transition-all group">
                 <RiImageLine className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/50 transition-colors" />
                 <p className="text-sm text-muted-foreground">Upload image notes and screenshots</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Duplicate images will be automatically skipped</p>
               </div>
               {imageUploading && <StatusMessage message="Uploading images..." type="info" />}
               {imageFiles.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                   {imageFiles.map((img, i) => (
-                    <div key={i} className="p-3 bg-secondary/50 border border-border text-center group relative">
+                    <div key={`img-${img.name}-${i}`} className="p-3 bg-secondary/50 border border-border text-center group relative">
                       <RiImageLine className="w-8 h-8 text-primary/50 mx-auto mb-2" />
                       <p className="text-xs text-muted-foreground truncate">{img.name}</p>
-                      <Button variant="ghost" size="sm" className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 h-6 w-6 p-0" onClick={() => setImageFiles((prev) => prev.filter((_, idx) => idx !== i))}>
+                      <Button variant="ghost" size="sm" className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 h-6 w-6 p-0" onClick={() => confirmDelete('image', String(i), img.name)}>
                         <RiCloseLine className="w-3 h-3 text-destructive" />
                       </Button>
                     </div>
@@ -958,7 +1264,7 @@ function ResourceManagerScreen({
         <TabsContent value="youtube" className="mt-4">
           <Card className="bg-card/80 backdrop-blur-sm border-border">
             <CardHeader>
-              <CardTitle className="text-sm font-medium tracking-wider uppercase">YouTube Channels</CardTitle>
+              <CardTitle className="text-sm font-medium tracking-wider uppercase">YouTube Channels & Videos</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex gap-2 mb-4">
@@ -972,9 +1278,12 @@ function ResourceManagerScreen({
                       <div key={y.id} className="flex items-center gap-3 p-2.5 bg-secondary/50 border border-border group">
                         <RiYoutubeLine className="w-4 h-4 text-red-400 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm truncate">{y.url}</p>
+                          <ResourceLink title={y.title || y.url} url={y.url} />
                         </div>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => setYoutubeLinks((prev) => prev.filter((x) => x.id !== y.id))}>
+                        <a href={y.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors flex-shrink-0">
+                          <RiExternalLinkLine className="w-3.5 h-3.5" />
+                        </a>
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('youtube', y.id, y.title || y.url)}>
                           <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                         </Button>
                       </div>
@@ -985,6 +1294,7 @@ function ResourceManagerScreen({
                 <div className="text-center py-6 text-muted-foreground">
                   <RiYoutubeLine className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No YouTube links added yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Paste a channel or video URL above</p>
                 </div>
               )}
             </CardContent>
@@ -998,7 +1308,7 @@ function ResourceManagerScreen({
             </CardHeader>
             <CardContent>
               <div className="space-y-3 mb-4">
-                <Input placeholder="Prompt name" value={promptForm.name} onChange={(e) => setPromptForm((prev) => ({ ...prev, name: e.target.value }))} className="bg-secondary border-border" />
+                <Input placeholder="Prompt name (must be unique)" value={promptForm.name} onChange={(e) => setPromptForm((prev) => ({ ...prev, name: e.target.value }))} className="bg-secondary border-border" />
                 <Textarea placeholder="Prompt text..." value={promptForm.text} onChange={(e) => setPromptForm((prev) => ({ ...prev, text: e.target.value }))} rows={3} className="bg-secondary border-border" />
                 <select value={promptForm.category} onChange={(e) => setPromptForm((prev) => ({ ...prev, category: e.target.value }))} className="w-full p-2 bg-secondary border border-border text-foreground text-sm">
                   {categories.map((cat) => (
@@ -1014,7 +1324,7 @@ function ResourceManagerScreen({
                       <div key={p.id} className="p-3 bg-secondary/50 border border-border group">
                         <div className="flex items-center justify-between mb-1">
                           <p className="text-sm font-medium">{p.name}</p>
-                          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => setPrompts((prev) => prev.filter((x) => x.id !== p.id))}>
+                          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('prompt', p.id, p.name)}>
                             <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                           </Button>
                         </div>
@@ -1028,6 +1338,7 @@ function ResourceManagerScreen({
                 <div className="text-center py-6 text-muted-foreground">
                   <RiTerminalLine className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No prompts added yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Create reusable prompts for common queries</p>
                 </div>
               )}
             </CardContent>
@@ -1053,43 +1364,50 @@ function CategoryBrowserScreen({
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
-  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set())
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [sortBy, setSortBy] = useState<'title' | 'type'>('title')
 
   const displayResources = sampleMode && categorizedResources.length === 0 ? SAMPLE_RESOURCES : categorizedResources
 
-  const categoryCounts: Record<string, number> = {}
-  displayResources.forEach((r) => {
-    const cat = r?.primary_category
-    if (cat) {
-      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
-    }
-    const secs = Array.isArray(r?.secondary_categories) ? r.secondary_categories : []
-    secs.forEach((sc) => {
-      if (sc) categoryCounts[sc] = (categoryCounts[sc] || 0) + 1
+  const categoryCounts: Record<string, number> = useMemo(() => {
+    const counts: Record<string, number> = {}
+    displayResources.forEach((r) => {
+      const cat = r?.primary_category
+      if (cat) counts[cat] = (counts[cat] || 0) + 1
+      const secs = Array.isArray(r?.secondary_categories) ? r.secondary_categories : []
+      secs.forEach((sc) => { if (sc) counts[sc] = (counts[sc] || 0) + 1 })
     })
-  })
+    return counts
+  }, [displayResources])
 
   const filteredCategories = categories.filter((c) => c.toLowerCase().includes(searchFilter.toLowerCase()))
 
-  const categoryResources = selectedCategory
-    ? displayResources.filter((r) => {
-        if (r?.primary_category === selectedCategory) return true
-        const secs = Array.isArray(r?.secondary_categories) ? r.secondary_categories : []
-        return secs.includes(selectedCategory)
-      })
-    : []
+  const categoryResources = useMemo(() => {
+    if (!selectedCategory) return []
+    const seen = new Set<string>()
+    return displayResources.filter((r) => {
+      const matches = r?.primary_category === selectedCategory ||
+        (Array.isArray(r?.secondary_categories) && r.secondary_categories.includes(selectedCategory))
+      if (!matches) return false
+      const key = `${r?.title ?? ''}_${r?.url ?? ''}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [selectedCategory, displayResources])
 
-  const sortedResources = [...categoryResources].sort((a, b) => {
-    if (sortBy === 'title') return (a?.title ?? '').localeCompare(b?.title ?? '')
-    return (a?.source_type ?? '').localeCompare(b?.source_type ?? '')
-  })
+  const sortedResources = useMemo(() => {
+    return [...categoryResources].sort((a, b) => {
+      if (sortBy === 'title') return (a?.title ?? '').localeCompare(b?.title ?? '')
+      return (a?.source_type ?? '').localeCompare(b?.source_type ?? '')
+    })
+  }, [categoryResources, sortBy])
 
-  const toggleExpand = (idx: number) => {
+  const toggleExpand = (key: string) => {
     setExpandedCards((prev) => {
       const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx)
-      else next.add(idx)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -1125,7 +1443,12 @@ function CategoryBrowserScreen({
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium tracking-wider uppercase">
-                {selectedCategory ? selectedCategory : 'Select a category'}
+                {selectedCategory ? (
+                  <span className="flex items-center gap-2">
+                    {selectedCategory}
+                    <Badge variant="outline" className="text-xs font-normal">{sortedResources.length} resources</Badge>
+                  </span>
+                ) : 'Select a category'}
               </CardTitle>
               {selectedCategory && (
                 <div className="flex items-center gap-2">
@@ -1142,38 +1465,34 @@ function CategoryBrowserScreen({
             {!selectedCategory ? (
               <div className="text-center py-16">
                 <RiGridLine className="w-12 h-12 text-muted-foreground/20 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">Select a category from the left panel to browse resources</p>
+                <p className="text-sm text-muted-foreground mb-1">Select a category from the left panel</p>
+                <p className="text-xs text-muted-foreground/60">Browse and explore your organized resources</p>
               </div>
             ) : sortedResources.length === 0 ? (
               <div className="text-center py-16">
                 <RiFolderAddLine className="w-12 h-12 text-muted-foreground/20 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No resources in this category yet</p>
+                <p className="text-sm text-muted-foreground mb-1">No resources in this category yet</p>
+                <p className="text-xs text-muted-foreground/60">Add resources in the Resource Manager and process them</p>
               </div>
             ) : (
               <ScrollArea className="h-[calc(100vh-360px)]">
                 <div className="space-y-3 pr-3">
                   {sortedResources.map((r, i) => {
-                    const isExpanded = expandedCards.has(i)
+                    const cardKey = `${r?.title ?? ''}_${r?.url ?? ''}_${i}`
+                    const isExpanded = expandedCards.has(cardKey)
                     const takeaways = Array.isArray(r?.key_takeaways) ? r.key_takeaways : []
                     return (
-                      <div key={i} className="p-4 bg-secondary/50 border border-border hover:border-primary/30 transition-all">
+                      <div key={cardKey} className="p-4 bg-secondary/50 border border-border hover:border-primary/30 transition-all">
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 text-muted-foreground">
                             <SourceTypeIcon type={r?.source_type ?? ''} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-medium">{r?.title ?? 'Untitled'}</p>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {r?.url && (
-                                  <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
-                                    <RiExternalLinkLine className="w-4 h-4" />
-                                  </a>
-                                )}
-                                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => toggleExpand(i)}>
-                                  {isExpanded ? <RiArrowUpLine className="w-3.5 h-3.5" /> : <RiArrowDownLine className="w-3.5 h-3.5" />}
-                                </Button>
-                              </div>
+                              <ResourceLink title={r?.title ?? 'Untitled'} url={r?.url} />
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs flex-shrink-0" onClick={() => toggleExpand(cardKey)}>
+                                {isExpanded ? <RiArrowUpLine className="w-3.5 h-3.5" /> : <RiArrowDownLine className="w-3.5 h-3.5" />}
+                              </Button>
                             </div>
                             <p className={cn('text-xs text-muted-foreground mt-1', isExpanded ? '' : 'line-clamp-2')}>{r?.summary ?? ''}</p>
                             {isExpanded && takeaways.length > 0 && (
@@ -1212,7 +1531,6 @@ function CategoryBrowserScreen({
 
 function QueryConsoleScreen({
   conversations,
-  setConversations,
   onQuery,
   querying,
   onExportPDF,
@@ -1224,7 +1542,6 @@ function QueryConsoleScreen({
   initialQuery,
 }: {
   conversations: ConversationEntry[]
-  setConversations: React.Dispatch<React.SetStateAction<ConversationEntry[]>>
   onQuery: (q: string, web: boolean) => void
   querying: boolean
   onExportPDF: (data: QueryResponse) => void
@@ -1238,6 +1555,7 @@ function QueryConsoleScreen({
   const [queryInput, setQueryInput] = useState(initialQuery)
   const [includeWebSearch, setIncludeWebSearch] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [shareEntry, setShareEntry] = useState<ConversationEntry | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1269,8 +1587,28 @@ function QueryConsoleScreen({
     }
   }
 
+  const buildShareContent = (entry: ConversationEntry) => {
+    const resp = entry.response
+    if (!resp) return ''
+    let text = `Query: ${resp.query ?? ''}\n\nSummary: ${resp.summary ?? ''}`
+    if (resp.detailed_analysis) text += `\n\nDetailed Analysis: ${resp.detailed_analysis}`
+    if (resp.recommendation) text += `\n\nRecommendation: ${resp.recommendation}`
+    if (Array.isArray(resp.sources) && resp.sources.length > 0) {
+      text += '\n\nSources:\n' + resp.sources.map((s) => `- ${s.title ?? ''}: ${s.url ?? ''}`).join('\n')
+    }
+    return text
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-120px)]">
+      {shareEntry && (
+        <ShareMenu
+          content={buildShareContent(shareEntry)}
+          title={shareEntry.response?.query ?? 'InfiniteMind Query Result'}
+          onClose={() => setShareEntry(null)}
+        />
+      )}
+
       <div className="mb-4">
         <h1 className="text-2xl font-light tracking-wider mb-1">Query Console</h1>
         <p className="text-sm text-muted-foreground">Ask InfiniteMind anything about your knowledge base</p>
@@ -1283,7 +1621,23 @@ function QueryConsoleScreen({
               <div className="text-center max-w-md">
                 <RiSparklingLine className="w-12 h-12 text-primary/30 mx-auto mb-4" />
                 <h2 className="text-lg font-light tracking-wider mb-2">Ready to explore your knowledge</h2>
-                <p className="text-sm text-muted-foreground">Ask a question below. InfiniteMind will search your knowledge base and optionally include live web research.</p>
+                <p className="text-sm text-muted-foreground mb-4">Ask a question below. InfiniteMind will search your knowledge base and optionally include live web research.</p>
+                <div className="grid grid-cols-1 gap-2 text-left">
+                  {[
+                    'What AI avatar tools offer the best value under $30/month?',
+                    'Compare browser automation tools for web scraping',
+                    'What are the latest trends in AI agents?',
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setQueryInput(suggestion)}
+                      className="p-3 bg-secondary/50 border border-border hover:border-primary/30 text-xs text-muted-foreground hover:text-foreground transition-all text-left flex items-center gap-2"
+                    >
+                      <RiQuestionLine className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -1293,6 +1647,7 @@ function QueryConsoleScreen({
               <div className="flex justify-end">
                 <div className="bg-primary/10 border border-primary/20 p-4 max-w-[80%]">
                   <p className="text-sm">{entry.query}</p>
+                  <p className="text-xs text-muted-foreground/50 mt-1">{new Date(entry.timestamp).toLocaleString()}</p>
                 </div>
               </div>
 
@@ -1353,7 +1708,7 @@ function QueryConsoleScreen({
                           {entry.response.sources.map((s, si) => (
                             <a key={si} href={s?.url ?? '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary border border-border text-xs hover:border-primary/30 transition-all">
                               {(s?.type ?? '').toLowerCase() === 'kb' ? <RiDatabase2Line className="w-3 h-3 text-primary" /> : <RiGlobalLine className="w-3 h-3 text-accent" />}
-                              {s?.title ?? s?.url ?? 'Source'}
+                              <span className="underline underline-offset-2 decoration-primary/30">{s?.title ?? s?.url ?? 'Source'}</span>
                               <RiExternalLinkLine className="w-3 h-3 ml-0.5" />
                             </a>
                           ))}
@@ -1387,11 +1742,15 @@ function QueryConsoleScreen({
                         </Button>
                         <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => entry.response && onPushNotion(entry.response)} disabled={pushing}>
                           {pushing ? <RiSparklingLine className="mr-1.5 w-3 h-3 animate-spin" /> : <RiExternalLinkLine className="mr-1.5 w-3 h-3" />}
-                          Push to Notion
+                          Notion
                         </Button>
                         <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => handleCopy(entry)}>
                           {copiedId === entry.id ? <RiCheckLine className="mr-1.5 w-3 h-3 text-green-400" /> : <RiFileCopyLine className="mr-1.5 w-3 h-3" />}
                           {copiedId === entry.id ? 'Copied' : 'Copy'}
+                        </Button>
+                        <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setShareEntry(entry)}>
+                          <RiShareLine className="mr-1.5 w-3 h-3" />
+                          Share
                         </Button>
                       </div>
                     </div>
@@ -1416,7 +1775,10 @@ function QueryConsoleScreen({
               <CardContent className="p-6">
                 <div className="flex items-center gap-3">
                   <RiSparklingLine className="w-5 h-5 text-primary animate-spin" />
-                  <span className="text-sm text-muted-foreground">InfiniteMind is thinking...</span>
+                  <div>
+                    <span className="text-sm text-muted-foreground">InfiniteMind is thinking...</span>
+                    <p className="text-xs text-muted-foreground/50 mt-0.5">Searching knowledge base and synthesizing results</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1473,6 +1835,7 @@ function SettingsScreen({
   const [kbDocuments, setKbDocuments] = useState<Array<{ fileName: string; status?: string }>>([])
   const [kbLoading, setKbLoading] = useState(false)
   const [kbStatus, setKbStatus] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; label: string } | null>(null)
 
   const loadDocs = useCallback(async () => {
     setKbLoading(true)
@@ -1488,13 +1851,30 @@ function SettingsScreen({
   }, [loadDocs])
 
   const handleAddCategory = () => {
-    if (!newCategory.trim() || categories.includes(newCategory.trim())) return
-    setCategories((prev) => [...prev, newCategory.trim()])
+    const trimmed = newCategory.trim()
+    if (!trimmed) return
+    if (categories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return
+    setCategories((prev) => [...prev, trimmed])
     setNewCategory('')
   }
 
-  const handleDeleteCategory = (index: number) => {
-    setCategories((prev) => prev.filter((_, i) => i !== index))
+  const confirmDelete = (type: string, id: string, label: string) => {
+    setDeleteTarget({ type, id, label })
+  }
+
+  const executeDelete = async () => {
+    if (!deleteTarget) return
+    const { type, id } = deleteTarget
+    if (type === 'category') {
+      setCategories((prev) => prev.filter((_, i) => i !== parseInt(id)))
+    } else if (type === 'kbDoc') {
+      const result = await deleteDocuments(RAG_ID, [id])
+      if (result.success) {
+        setKbDocuments((prev) => prev.filter((d) => d.fileName !== id))
+        setKbStatus(`Deleted ${id}`)
+      }
+    }
+    setDeleteTarget(null)
   }
 
   const handleEditStart = (index: number) => {
@@ -1504,7 +1884,10 @@ function SettingsScreen({
 
   const handleEditSave = () => {
     if (editingIndex === null || !editValue.trim()) return
-    setCategories((prev) => prev.map((c, i) => (i === editingIndex ? editValue.trim() : c)))
+    const trimmed = editValue.trim()
+    const duplicate = categories.some((c, i) => i !== editingIndex && c.toLowerCase() === trimmed.toLowerCase())
+    if (duplicate) return
+    setCategories((prev) => prev.map((c, i) => (i === editingIndex ? trimmed : c)))
     setEditingIndex(null)
     setEditValue('')
   }
@@ -1521,16 +1904,16 @@ function SettingsScreen({
     })
   }
 
-  const handleDeleteKBDoc = async (fileName: string) => {
-    const result = await deleteDocuments(RAG_ID, [fileName])
-    if (result.success) {
-      setKbDocuments((prev) => prev.filter((d) => d.fileName !== fileName))
-      setKbStatus(`Deleted ${fileName}`)
-    }
-  }
-
   return (
     <div className="space-y-8">
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Confirm Deletion"
+        message={`Are you sure you want to delete "${deleteTarget?.label ?? ''}"? This action cannot be undone.`}
+        onConfirm={executeDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
       <div>
         <h1 className="text-2xl font-light tracking-wider mb-1">Settings</h1>
         <p className="text-sm text-muted-foreground">Configure your knowledge engine</p>
@@ -1546,13 +1929,21 @@ function SettingsScreen({
           </CardHeader>
           <CardContent>
             <div className="p-4 bg-secondary/50 border border-border">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="w-2 h-2 bg-green-400" />
                 <span className="text-sm">Connected via Agent</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Notion integration is handled by the Output Delivery Agent. No additional configuration needed.
+              <p className="text-xs text-muted-foreground">
+                Notion integration is handled by the Output Delivery Agent. You can push query results directly to your Notion workspace from the Query Console.
               </p>
+            </div>
+            <div className="mt-3 p-4 bg-secondary/50 border border-border">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Available Actions</p>
+              <div className="space-y-1.5 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2"><RiCheckLine className="w-3 h-3 text-green-400" /> Read Notion pages as input resources</div>
+                <div className="flex items-center gap-2"><RiCheckLine className="w-3 h-3 text-green-400" /> Create formatted Notion pages from query results</div>
+                <div className="flex items-center gap-2"><RiCheckLine className="w-3 h-3 text-green-400" /> Export PDF documents from analysis</div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1598,7 +1989,7 @@ function SettingsScreen({
           <ScrollArea className="h-[350px]">
             <div className="space-y-1.5 pr-3">
               {categories.map((cat, i) => (
-                <div key={i} className="flex items-center gap-2 p-2.5 bg-secondary/50 border border-border group">
+                <div key={`settings-cat-${i}`} className="flex items-center gap-2 p-2.5 bg-secondary/50 border border-border group">
                   <div className="flex flex-col gap-0.5">
                     <Button variant="ghost" size="sm" className="h-4 w-4 p-0" onClick={() => handleMoveCategory(i, 'up')} disabled={i === 0}>
                       <RiArrowUpLine className="w-3 h-3" />
@@ -1620,7 +2011,7 @@ function SettingsScreen({
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEditStart(i)}>
                           <RiEditLine className="w-3.5 h-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleDeleteCategory(i)}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => confirmDelete('category', String(i), cat)}>
                           <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                         </Button>
                       </div>
@@ -1652,18 +2043,19 @@ function SettingsScreen({
           ) : kbDocuments.length === 0 ? (
             <div className="text-center py-8">
               <RiDatabase2Line className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No documents in the knowledge base</p>
+              <p className="text-sm text-muted-foreground mb-1">No documents in the knowledge base</p>
+              <p className="text-xs text-muted-foreground/60">Upload documents in the Resource Manager to get started</p>
             </div>
           ) : (
             <div className="space-y-2">
               {kbDocuments.map((doc, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-secondary/50 border border-border group">
+                <div key={`kb-set-${doc.fileName}-${i}`} className="flex items-center justify-between p-3 bg-secondary/50 border border-border group">
                   <div className="flex items-center gap-2">
                     <RiFilePdfLine className="w-4 h-4 text-primary" />
                     <span className="text-sm">{doc.fileName}</span>
                     {doc.status && <Badge variant="secondary" className="text-xs">{doc.status}</Badge>}
                   </div>
-                  <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => handleDeleteKBDoc(doc.fileName)}>
+                  <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 w-7 p-0" onClick={() => confirmDelete('kbDoc', doc.fileName, doc.fileName)}>
                     <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
                   </Button>
                 </div>
@@ -1739,8 +2131,16 @@ export default function Page() {
       if (result.success) {
         const data = result?.response?.result
         if (data && Array.isArray(data?.categorized_resources)) {
-          setCategorizedResources(data.categorized_resources)
-          setStatusMessage(`Successfully processed ${data?.resources_processed ?? 0} resources`)
+          // Deduplicate incoming resources by title+url
+          const existingKeys = new Set(categorizedResources.map((r) => `${r.title}_${r.url}`))
+          const newResources = data.categorized_resources.filter((r: CategorizedResource) => {
+            const key = `${r?.title ?? ''}_${r?.url ?? ''}`
+            if (existingKeys.has(key)) return false
+            existingKeys.add(key)
+            return true
+          })
+          setCategorizedResources((prev) => [...prev, ...newResources])
+          setStatusMessage(`Successfully processed ${data?.resources_processed ?? 0} resources (${newResources.length} new)`)
           setStatusType('success')
         } else {
           setStatusMessage(data?.message ?? 'Processing complete')
@@ -1953,6 +2353,7 @@ export default function Page() {
               <DashboardScreen
                 categorizedResources={categorizedResources}
                 categories={categories}
+                conversations={conversations}
                 onNavigate={setActiveScreen}
                 onSearchRoute={handleSearchRoute}
                 sampleMode={sampleMode}
@@ -1966,7 +2367,6 @@ export default function Page() {
                 processing={processing}
                 statusMessage={statusMessage}
                 statusType={statusType}
-                activeAgentId={activeAgentId}
               />
             )}
 
@@ -1981,7 +2381,6 @@ export default function Page() {
             {activeScreen === 'query' && (
               <QueryConsoleScreen
                 conversations={conversations}
-                setConversations={setConversations}
                 onQuery={handleQuery}
                 querying={querying}
                 onExportPDF={handleExportPDF}
